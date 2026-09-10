@@ -38,21 +38,29 @@ async function run() {
     await new Promise((r) => setTimeout(r, 1500));
 
     // --- SCREENSHOT 1: Real Product Dashboard with Document & Citations ---
-    console.log('Clicking Load Sample Research Paper...');
+    console.log('Clicking Load Demo Paper...');
     await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll('button'));
-      const sampleBtn = buttons.find((b) => b.textContent && b.textContent.includes('Load Sample'));
+      const sampleBtn = buttons.find((b) => b.textContent && (b.textContent.includes('Demo Paper') || b.textContent.includes('Load Sample')));
       if (sampleBtn) sampleBtn.click();
     });
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 2500));
 
-    // Click suggested prompt
+    // Open citation or document viewer
     await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button'));
-      const promptBtn = buttons.find((b) => b.textContent && b.textContent.includes('retrieval failure rates'));
-      if (promptBtn) promptBtn.click();
+      const docCard = document.querySelector('.group.flex.items-center');
+      if (docCard) docCard.click();
     });
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Trigger a simulated citation match to showcase the glowing highlight & excerpt card
+    await page.evaluate(() => {
+      const citeBtn = document.querySelector('button.group\\/cite');
+      if (citeBtn) {
+        citeBtn.click();
+      }
+    });
+    await new Promise((r) => setTimeout(r, 1500));
 
     const ss1Path = path.join(assetsDir, '1_real_product_dashboard.png');
     await page.screenshot({ path: ss1Path });

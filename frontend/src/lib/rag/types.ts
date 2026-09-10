@@ -18,6 +18,8 @@ export interface DocumentItem {
   pages: PageData[];
   rawText: string;
   chunks: DocumentChunk[];
+  pdfBlobUrl?: string;
+  pdfData?: ArrayBuffer;
 }
 
 export interface DocumentChunk {

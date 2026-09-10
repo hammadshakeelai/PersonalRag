@@ -25,9 +25,17 @@ export async function parseUploadedFile(file: File): Promise<DocumentItem> {
 
   let pages: PageData[] = [];
   let rawText = '';
+  let pdfBlobUrl: string | undefined;
+  let pdfData: ArrayBuffer | undefined;
 
   if (docType === 'pdf') {
     const arrayBuffer = await file.arrayBuffer();
+    pdfData = arrayBuffer.slice(0);
+    try {
+      pdfBlobUrl = URL.createObjectURL(file);
+    } catch {
+      // Fallback in non-browser environments
+    }
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const totalPages = pdf.numPages;
 
@@ -95,6 +103,8 @@ export async function parseUploadedFile(file: File): Promise<DocumentItem> {
     pages,
     rawText,
     chunks,
+    pdfBlobUrl,
+    pdfData,
     summary: pages[0]?.text.slice(0, 200) + '...',
   };
 }

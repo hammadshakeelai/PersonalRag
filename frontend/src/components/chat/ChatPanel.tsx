@@ -6,20 +6,22 @@ import {
   ExternalLink,
   Trash2,
   HelpCircle,
-  FileCheck2,
   StopCircle,
-  CornerDownLeft,
   Copy,
   Check,
   Key,
   Quote,
+  Send,
+  ThumbsUp,
+  ThumbsDown,
+  Share2,
 } from 'lucide-react';
 import { marked } from 'marked';
 import { useRagStore, globalBM25, globalVector } from '../../store/useRagStore';
 import { streamRAGResponse } from '../../lib/llm/client';
 import { reciprocalRankFusion } from '../../lib/rag/rrf';
 import { rerankChunks } from '../../lib/rag/reranker';
-import type { ChatMessage, Citation } from '../../lib/rag/types';
+import type { Citation } from '../../lib/rag/types';
 
 export const ChatPanel: React.FC = () => {
   const {
@@ -34,10 +36,12 @@ export const ChatPanel: React.FC = () => {
     setActiveCitation,
     setPdfViewerOpen,
     setSettingsOpen,
+    setStudioOpen,
   } = useRagStore();
 
   const [inputQuery, setInputQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [likedMap, setLikedMap] = useState<Record<string, number>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -59,44 +63,33 @@ export const ChatPanel: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSendMessage = async (queryText?: string) => {
-    const q = (queryText || inputQuery).trim();
+  const handleToggleLike = (id: string) => {
+    setLikedMap((prev) => ({
+      ...prev,
+      [id]: prev[id] ? 0 : 1,
+    }));
+  };
+
+  const handleSendMessage = async (customQuery?: string) => {
+    const q = (customQuery || inputQuery).trim();
     if (!q || isStreaming) return;
+
+    if (activeDocs.length === 0) {
+      alert('Please select at least one document from the Sources panel on the left.');
+      return;
+    }
 
     setInputQuery('');
 
-    // Add user message
-    const userMsg: ChatMessage = {
-      id: 'msg_' + Date.now(),
+    // User Message
+    addChatMessage({
+      id: 'msg_user_' + Date.now(),
       role: 'user',
       content: q,
       timestamp: Date.now(),
-    };
-    addChatMessage(userMsg);
+    });
 
-    // If no active documents, inform user
-    if (activeDocIds.length === 0) {
-      addChatMessage({
-        id: 'msg_assistant_' + Date.now(),
-        role: 'assistant',
-        content: '⚠️ **No document sources are selected.** Please upload or check at least one document in the Sources panel on the left to ask grounded questions.',
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Check API Key
-    if (!hasApiKey) {
-      addChatMessage({
-        id: 'msg_assistant_' + Date.now(),
-        role: 'assistant',
-        content: `⚠️ **API Key Required:** Please configure your **${byokConfig.provider.toUpperCase()}** API key in the Settings modal (top right) to start generating responses.\n\n*Tip: Google Gemini and Groq offer generous 100% free tiers!*`,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Prepare assistant placeholder
+    // Assistant placeholder
     const assistantId = 'msg_assistant_' + Date.now();
     addChatMessage({
       id: assistantId,
@@ -185,42 +178,62 @@ export const ChatPanel: React.FC = () => {
 
   const renderMarkdown = (content: string) => {
     try {
-      return { __html: marked.parse(content) as string };
+      // Style citation mentions like [Doc 1, p. 14] into clickable badges
+      const styledContent = content.replace(
+        /\[([^\]]+,\s*p\.\s*\d+)\]/g,
+        '<span class="inline-flex items-center space-x-1 text-sky-400 bg-sky-950/80 border border-sky-800/80 px-1.5 py-0.2 rounded text-[11px] font-mono cursor-pointer hover:bg-sky-900/80 transition-colors">[$1]</span>'
+      );
+      return { __html: marked.parse(styledContent) as string };
     } catch {
       return { __html: content };
     }
   };
 
   const samplePrompts = [
+    'What are the key performance indicators mentioned in the report?',
     'Summarize key insights across all selected sources',
-    'What are the retrieval failure rates mentioned?',
     'Explain the mathematical formulation of RRF',
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-900/50 overflow-hidden relative">
-      {/* Top Banner / Stats */}
-      <div className="px-4 py-2 border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-sm flex items-center justify-between text-xs text-slate-400 select-none">
+    <div className="flex-1 flex flex-col h-full bg-[#0B0F17] overflow-hidden relative select-text">
+      {/* Top Header: AI Chat (Mockup Style) */}
+      <div className="p-3.5 border-b border-slate-800/80 bg-slate-900/40 backdrop-blur-sm flex items-center justify-between text-xs text-slate-300 select-none">
         <div className="flex items-center space-x-2">
-          <FileCheck2 className="w-4 h-4 text-emerald-400" />
-          <span>
-            Searching in <strong className="text-slate-200">{activeDocs.length}</strong> active{' '}
-            {activeDocs.length === 1 ? 'source' : 'sources'}
+          <h2 className="text-sm font-bold text-white tracking-tight">AI Chat</h2>
+          <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
+            ({activeDocs.length} active sources)
           </span>
-          <span className="text-slate-600 hidden sm:inline">•</span>
-          <span className="text-indigo-400 font-medium hidden sm:inline">Hybrid BM25 + Dense RRF</span>
         </div>
 
-        {chatMessages.length > 1 && (
+        <div className="flex items-center space-x-1.5">
           <button
-            onClick={clearChat}
-            className="flex items-center space-x-1 text-slate-400 hover:text-rose-400 transition-colors"
-            title="Clear Chat History"
+            onClick={() => setStudioOpen(true)}
+            className="w-7 h-7 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 flex items-center justify-center transition-colors shadow-sm"
+            title="Open Audio Studio"
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Clear Chat</span>
+            <Sparkles className="w-3.5 h-3.5" />
           </button>
-        )}
+
+          {chatMessages.length > 1 && (
+            <button
+              onClick={clearChat}
+              className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800/60 transition-colors"
+              title="Clear Chat"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          <button
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-colors"
+            title="Options"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Missing API Key Warning Bar */}
@@ -239,7 +252,7 @@ export const ChatPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Message List */}
+      {/* Messages Stream */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
         {chatMessages.map((msg) => {
           const isUser = msg.role === 'user';
@@ -248,8 +261,9 @@ export const ChatPanel: React.FC = () => {
               key={msg.id}
               className={`flex items-start space-x-3 group ${isUser ? 'justify-end' : 'justify-start'}`}
             >
+              {/* Assistant Avatar */}
               {!isUser && (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-md shadow-indigo-600/20">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 via-indigo-600 to-sky-500 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-[0_0_12px_rgba(168,85,247,0.4)]">
                   <Bot className="w-4 h-4" />
                 </div>
               )}
@@ -258,34 +272,37 @@ export const ChatPanel: React.FC = () => {
                 className={`relative max-w-[88%] sm:max-w-[82%] rounded-2xl p-4 sm:p-5 text-sm leading-relaxed transition-all ${
                   isUser
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/20'
-                    : 'bg-slate-950/90 border border-slate-800/90 text-slate-200 shadow-sm'
+                    : 'bg-[#111624]/90 border border-slate-800/80 text-slate-200 shadow-xl'
                 }`}
               >
-                {/* Copy message button */}
-                <button
-                  onClick={() => handleCopyMessage(msg.id, msg.content)}
-                  className="opacity-0 group-hover:opacity-100 absolute top-2 right-2 p-1.5 text-slate-400 hover:text-slate-100 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all"
-                  title="Copy message"
-                >
-                  {copiedId === msg.id ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
+                {/* Assistant Sub-header with Streaming Status */}
+                {!isUser && (
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/60 select-none">
+                    <div className="flex items-center space-x-1.5 text-xs font-semibold text-purple-300">
+                      <span>{msg.isStreaming ? 'AI streaming' : 'AI Response'}</span>
+                      {msg.isStreaming && (
+                        <span className="flex space-x-1 items-center">
+                          <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" />
+                          <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce delay-150" />
+                          <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce delay-300" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                {/* Message Body */}
+                {/* Message Markdown Body */}
                 <div
-                  className="prose-custom break-words"
+                  className="prose-custom break-words leading-relaxed"
                   dangerouslySetInnerHTML={renderMarkdown(msg.content)}
                 />
 
                 {/* Streaming Indicator */}
                 {msg.isStreaming && (
-                  <span className="inline-block w-2 h-4 ml-1 bg-indigo-400 animate-pulse align-middle" />
+                  <span className="inline-block w-2 h-4 ml-1 bg-purple-400 animate-pulse align-middle" />
                 )}
 
-                {/* Inline Verifiable Citations */}
+                {/* Ground Truth Citation Cards */}
                 {!isUser && msg.citations && msg.citations.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-slate-800/80">
                     <div className="text-[11px] font-semibold text-slate-400 flex items-center space-x-1.5 mb-2 select-none">
@@ -298,7 +315,7 @@ export const ChatPanel: React.FC = () => {
                         <button
                           key={c.id || i}
                           onClick={() => handleCitationClick(c)}
-                          className="flex items-start space-x-2 text-left p-2 rounded-xl bg-slate-900/60 hover:bg-indigo-950/40 border border-slate-800/80 hover:border-indigo-500/40 transition-all hover:scale-[1.01] group/cite"
+                          className="flex items-start space-x-2 text-left p-2 rounded-xl bg-slate-900/60 hover:bg-indigo-950/40 border border-slate-800/80 hover:border-indigo-500/40 transition-all group/cite"
                         >
                           <div className="w-5 h-5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                             {i + 1}
@@ -319,10 +336,48 @@ export const ChatPanel: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Message Action Footer (Mockup Style) */}
+                {!isUser && (
+                  <div className="mt-3 pt-2 flex items-center space-x-3 text-slate-400 text-xs border-t border-slate-800/40 select-none">
+                    <button
+                      onClick={() => handleToggleLike(msg.id)}
+                      className="flex items-center space-x-1 hover:text-white transition-colors"
+                      title="Helpful"
+                    >
+                      <ThumbsUp className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">{likedMap[msg.id] ? 1 : 0}</span>
+                    </button>
+                    <button
+                      className="hover:text-white transition-colors"
+                      title="Not helpful"
+                    >
+                      <ThumbsDown className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleCopyMessage(msg.id, msg.content)}
+                      className="hover:text-white transition-colors"
+                      title="Copy response"
+                    >
+                      {copiedId === msg.id ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <button
+                      className="hover:text-white transition-colors"
+                      title="Share response"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
 
+              {/* User Avatar */}
               {isUser && (
-                <div className="w-8 h-8 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300 shrink-0 mt-0.5 shadow-sm">
+                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5 shadow-sm">
                   <User className="w-4 h-4" />
                 </div>
               )}
@@ -354,14 +409,14 @@ export const ChatPanel: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form */}
-      <div className="p-3 sm:p-4 bg-slate-950 border-t border-slate-800/80">
+      {/* Glowing Bottom Prompt Bar (Mockup Style) */}
+      <div className="p-3 sm:p-4 bg-[#0B0F17] border-t border-slate-800/80">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="relative flex items-end bg-slate-900/90 border border-slate-800 focus-within:border-indigo-500/80 rounded-2xl px-3.5 py-2.5 transition-all shadow-md shadow-black/20"
+          className="relative flex items-center bg-[#0F1422] border border-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.15)] rounded-2xl px-4 py-2.5 transition-all"
         >
           <textarea
             ref={inputRef}
@@ -374,13 +429,9 @@ export const ChatPanel: React.FC = () => {
                 handleSendMessage();
               }
             }}
-            placeholder={
-              activeDocs.length > 0
-                ? `Ask questions across ${activeDocs.length} selected documents...`
-                : 'Please select at least one document on the left...'
-            }
+            placeholder="Provide your prompt..."
             disabled={isStreaming}
-            className="flex-1 max-h-32 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none py-1"
+            className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none py-1"
           />
 
           <div className="flex items-center space-x-2 ml-2 select-none">
@@ -388,7 +439,7 @@ export const ChatPanel: React.FC = () => {
               <button
                 type="button"
                 className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
-                title="Generating response..."
+                title="Generating..."
               >
                 <StopCircle className="w-5 h-5 animate-pulse" />
               </button>
@@ -396,10 +447,10 @@ export const ChatPanel: React.FC = () => {
               <button
                 type="submit"
                 disabled={!inputQuery.trim() || activeDocs.length === 0}
-                className="p-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-30 text-white rounded-xl transition-all shadow-md shadow-indigo-600/20 disabled:cursor-not-allowed"
+                className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 disabled:opacity-30 text-white flex items-center justify-center transition-all shadow-md shadow-indigo-500/30 disabled:cursor-not-allowed shrink-0"
                 title="Send query (Enter)"
               >
-                <CornerDownLeft className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -407,7 +458,7 @@ export const ChatPanel: React.FC = () => {
 
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 px-1 select-none">
           <span>Press ↵ to send • Shift+↵ for new line</span>
-          <span className="font-mono text-[10px]">Model: {byokConfig.model}</span>
+          <span className="font-mono text-[10px]">Active Model: {byokConfig.model}</span>
         </div>
       </div>
     </div>

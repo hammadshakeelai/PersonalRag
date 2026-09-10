@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import type { ActiveCitation, BYOKConfig, ChatMessage, DocumentItem, StudioArtifact } from '../lib/rag/types';
 import { BM25Index } from '../lib/rag/bm25';
 import { VectorIndex } from '../lib/rag/vector';
@@ -20,45 +20,23 @@ const DEFAULT_BYOK: BYOKConfig = {
 export const globalBM25 = new BM25Index();
 export const globalVector = new VectorIndex();
 
-interface RagState {
-  documents: DocumentItem[];
-  activeDocId: string | null;
-  activeCitation: ActiveCitation | null;
-  chatMessages: ChatMessage[];
-  isStreaming: boolean;
-  byokConfig: BYOKConfig;
-  studioArtifacts: StudioArtifact[];
-  activeStudioArtifact: StudioArtifact | null;
-  isStudioOpen: boolean;
-  isSettingsOpen: boolean;
-  isPdfViewerOpen: boolean;
-  isSidebarOpen: boolean;
-  backendUrl: string;
-  backendConnected: boolean;
-
-  // Actions
-  addDocument: (doc: DocumentItem) => Promise<void>;
-  removeDocument: (id: string) => void;
-  toggleDocumentSelection: (id: string) => void;
-  selectAllDocuments: (select: boolean) => void;
-  setActiveDocId: (id: string | null) => void;
-  setActiveCitation: (citation: ActiveCitation | null) => void;
-  addChatMessage: (msg: ChatMessage) => void;
-  updateLastChatMessage: (content: string, isStreaming?: boolean, citations?: any[]) => void;
-  clearChat: () => void;
-  updateBYOKConfig: (partial: Partial<BYOKConfig>) => void;
-  addStudioArtifact: (art: StudioArtifact) => void;
-  setActiveStudioArtifact: (art: StudioArtifact | null) => void;
-  setStudioOpen: (open: boolean) => void;
-  setSettingsOpen: (open: boolean) => void;
-  setPdfViewerOpen: (open: boolean) => void;
-  setSidebarOpen: (open: boolean) => void;
-  toggleSidebar: () => void;
-  setBackendConnected: (connected: boolean) => void;
-  setBackendUrl: (url: string) => void;
-}
-
 const STORAGE_KEY_BYOK = 'ultra_rag_byok_config';
+const STORAGE_KEY_CHAT = 'ultra_rag_chat_history';
+const STORAGE_KEY_STUDIO = 'ultra_rag_studio_artifacts';
+const STORAGE_KEY_DOCS = 'ultra_rag_documents';
+
+const DEFAULT_WELCOME_MSG: ChatMessage = {
+  id: 'welcome_msg',
+  role: 'assistant',
+  content: `### Welcome to **Ultra-RAG** 🚀
+Your personal, privacy-first document intelligence platform combining the exact-citation verification of **ChatPDF** with the multi-source synthesis of **NotebookLM**.
+
+**Get Started:**
+1. Click **Settings** (⚙️ top right) to select your preferred model (supports **Google Gemini** free tier, **Groq**, **OpenAI**, **Claude**, or custom endpoints like **Agnes AI / Ollama**).
+2. Upload one or multiple documents (**PDF, TXT, Markdown, CSV, Code**).
+3. Ask questions with cross-document synthesis, click citations to preview exact pages, or open the **Studio** to generate podcasts and study guides!`,
+  timestamp: Date.now(),
+};
 
 function loadStoredBYOK(): BYOKConfig {
   try {
@@ -85,31 +63,135 @@ function loadStoredBYOK(): BYOKConfig {
   return DEFAULT_BYOK;
 }
 
-export const useRagStore = create<RagState>((set, get) => ({
-  documents: [],
-  activeDocId: null,
-  activeCitation: null,
-  chatMessages: [
-    {
-      id: 'welcome_msg',
-      role: 'assistant',
-      content: `### Welcome to **Ultra-RAG** 🚀
-Your personal, privacy-first document intelligence platform combining the exact-citation verification of **ChatPDF** with the multi-source synthesis of **NotebookLM**.
+function loadStoredChat(): ChatMessage[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_CHAT);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [DEFAULT_WELCOME_MSG];
+}
 
-**Get Started:**
-1. Click **Settings** (⚙️ top right) to select your preferred model (supports **Google Gemini** free tier, **Groq**, **OpenAI**, **Claude**, or custom endpoints like **Agnes AI / Ollama**).
-2. Upload one or multiple documents (**PDF, TXT, Markdown, CSV, Code**).
-3. Ask questions with cross-document synthesis, click citations to preview exact pages, or open the **Studio** to generate podcasts and study guides!`,
-      timestamp: Date.now(),
-    },
-  ],
+function loadStoredStudio(): StudioArtifact[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_STUDIO);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function loadStoredDocs(): DocumentItem[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_DOCS);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Re-index loaded document chunks into global search indices
+        for (const doc of parsed) {
+          if (doc.chunks && doc.chunks.length > 0) {
+            globalBM25.indexChunks(doc.chunks);
+          }
+        }
+        return parsed;
+      }
+    }
+  } catch {}
+  return [];
+}
+
+function persistChat(messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages));
+  } catch {}
+}
+
+function persistStudio(artifacts: StudioArtifact[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY_STUDIO, JSON.stringify(artifacts));
+  } catch {}
+}
+
+function persistDocs(documents: DocumentItem[]) {
+  try {
+    // Strip large binary buffers before saving to localStorage to stay within quota
+    const sanitized = documents.map((d) => ({
+      id: d.id,
+      name: d.name,
+      type: d.type,
+      totalPages: d.totalPages,
+      size: d.size,
+      uploadedAt: d.uploadedAt,
+      summary: d.summary,
+      selected: d.selected,
+      pages: d.pages,
+      rawText: d.rawText,
+      chunks: d.chunks,
+    }));
+    localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(sanitized));
+  } catch (err) {
+    console.warn('Document localStorage persist error (quota exceeded):', err);
+  }
+}
+
+const initialDocs = loadStoredDocs();
+
+interface RagState {
+  documents: DocumentItem[];
+  activeDocId: string | null;
+  activeCitation: ActiveCitation | null;
+  chatMessages: ChatMessage[];
+  isStreaming: boolean;
+  byokConfig: BYOKConfig;
+  studioArtifacts: StudioArtifact[];
+  activeStudioArtifact: StudioArtifact | null;
+  isStudioOpen: boolean;
+  isSettingsOpen: boolean;
+  isPdfViewerOpen: boolean;
+  isSidebarOpen: boolean;
+  backendUrl: string;
+  backendConnected: boolean;
+
+  // Actions
+  addDocument: (doc: DocumentItem) => Promise<void>;
+  removeDocument: (id: string) => void;
+  removeSelectedDocuments: () => void;
+  clearAllDocuments: () => void;
+  toggleDocumentSelection: (id: string) => void;
+  selectAllDocuments: (select: boolean) => void;
+  setActiveDocId: (id: string | null) => void;
+  setActiveCitation: (citation: ActiveCitation | null) => void;
+  addChatMessage: (msg: ChatMessage) => void;
+  updateLastChatMessage: (content: string, isStreaming?: boolean, citations?: any[]) => void;
+  clearChat: () => void;
+  updateBYOKConfig: (partial: Partial<BYOKConfig>) => void;
+  addStudioArtifact: (art: StudioArtifact) => void;
+  setActiveStudioArtifact: (art: StudioArtifact | null) => void;
+  setStudioOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setPdfViewerOpen: (open: boolean) => void;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
+  setBackendConnected: (connected: boolean) => void;
+  setBackendUrl: (url: string) => void;
+}
+
+export const useRagStore = create<RagState>((set, get) => ({
+  documents: initialDocs,
+  activeDocId: initialDocs[0]?.id || null,
+  activeCitation: null,
+  chatMessages: loadStoredChat(),
   isStreaming: false,
   byokConfig: loadStoredBYOK(),
-  studioArtifacts: [],
+  studioArtifacts: loadStoredStudio(),
   activeStudioArtifact: null,
   isStudioOpen: false,
   isSettingsOpen: false,
-  isPdfViewerOpen: false,
+  isPdfViewerOpen: initialDocs.length > 0,
   isSidebarOpen: true,
   backendUrl: 'http://localhost:8000',
   backendConnected: false,
@@ -119,11 +201,15 @@ Your personal, privacy-first document intelligence platform combining the exact-
     globalBM25.indexChunks(doc.chunks);
     await globalVector.addChunks(doc.chunks, get().byokConfig);
 
-    set((state) => ({
-      documents: [...state.documents, doc],
-      activeDocId: state.activeDocId || doc.id,
-      isPdfViewerOpen: true,
-    }));
+    set((state) => {
+      const updated = [...state.documents, doc];
+      persistDocs(updated);
+      return {
+        documents: updated,
+        activeDocId: state.activeDocId || doc.id,
+        isPdfViewerOpen: true,
+      };
+    });
   },
 
   removeDocument: (id) => {
@@ -132,6 +218,7 @@ Your personal, privacy-first document intelligence platform combining the exact-
 
     set((state) => {
       const remaining = state.documents.filter((d) => d.id !== id);
+      persistDocs(remaining);
       const nextActiveId = state.activeDocId === id ? (remaining[0]?.id || null) : state.activeDocId;
       return {
         documents: remaining,
@@ -141,18 +228,56 @@ Your personal, privacy-first document intelligence platform combining the exact-
     });
   },
 
+  removeSelectedDocuments: () => {
+    set((state) => {
+      const toRemove = state.documents.filter((d) => d.selected).map((d) => d.id);
+      if (toRemove.length === 0) return state;
+
+      globalBM25.removeDocuments(toRemove);
+      globalVector.removeDocuments(toRemove);
+
+      const remaining = state.documents.filter((d) => !d.selected);
+      persistDocs(remaining);
+      const nextActiveId = remaining[0]?.id || null;
+      return {
+        documents: remaining,
+        activeDocId: nextActiveId,
+        isPdfViewerOpen: remaining.length > 0,
+      };
+    });
+  },
+
+  clearAllDocuments: () => {
+    set((state) => {
+      const allIds = state.documents.map((d) => d.id);
+      globalBM25.removeDocuments(allIds);
+      globalVector.removeDocuments(allIds);
+      persistDocs([]);
+      return {
+        documents: [],
+        activeDocId: null,
+        activeCitation: null,
+        isPdfViewerOpen: false,
+      };
+    });
+  },
+
   toggleDocumentSelection: (id) => {
-    set((state) => ({
-      documents: state.documents.map((d) =>
+    set((state) => {
+      const updated = state.documents.map((d) =>
         d.id === id ? { ...d, selected: !d.selected } : d
-      ),
-    }));
+      );
+      persistDocs(updated);
+      return { documents: updated };
+    });
   },
 
   selectAllDocuments: (select) => {
-    set((state) => ({
-      documents: state.documents.map((d) => ({ ...d, selected: select })),
-    }));
+    set((state) => {
+      const updated = state.documents.map((d) => ({ ...d, selected: select }));
+      persistDocs(updated);
+      return { documents: updated };
+    });
   },
 
   setActiveDocId: (id) => set({ activeDocId: id, isPdfViewerOpen: !!id }),
@@ -166,9 +291,11 @@ Your personal, privacy-first document intelligence platform combining the exact-
   },
 
   addChatMessage: (msg) => {
-    set((state) => ({
-      chatMessages: [...state.chatMessages, msg],
-    }));
+    set((state) => {
+      const updated = [...state.chatMessages, msg];
+      persistChat(updated);
+      return { chatMessages: updated };
+    });
   },
 
   updateLastChatMessage: (content, isStreaming, citations) => {
@@ -180,13 +307,19 @@ Your personal, privacy-first document intelligence platform combining the exact-
       if (isStreaming !== undefined) last.isStreaming = isStreaming;
       if (citations !== undefined) last.citations = citations;
       msgs[msgs.length - 1] = last;
+
+      if (!isStreaming) {
+        persistChat(msgs);
+      }
       return { chatMessages: msgs, isStreaming: isStreaming ?? state.isStreaming };
     });
   },
 
   clearChat: () => {
+    const cleared = [DEFAULT_WELCOME_MSG];
+    persistChat(cleared);
     set({
-      chatMessages: [],
+      chatMessages: cleared,
     });
   },
 
@@ -201,11 +334,15 @@ Your personal, privacy-first document intelligence platform combining the exact-
   },
 
   addStudioArtifact: (art) => {
-    set((state) => ({
-      studioArtifacts: [art, ...state.studioArtifacts],
-      activeStudioArtifact: art,
-      isStudioOpen: true,
-    }));
+    set((state) => {
+      const updated = [art, ...state.studioArtifacts];
+      persistStudio(updated);
+      return {
+        studioArtifacts: updated,
+        activeStudioArtifact: art,
+        isStudioOpen: true,
+      };
+    });
   },
 
   setActiveStudioArtifact: (art) => set({ activeStudioArtifact: art, isStudioOpen: !!art }),
