@@ -68,42 +68,57 @@ export const SourceManager: React.FC = () => {
     setProcessError(null);
 
     try {
-      const sampleText = `# Contextual Retrieval & Advanced RAG: Architectural Paradigms for Zero-Hallucination QA
+      const sampleFiles = [
+        { name: 'Attention_Is_All_You_Need.pdf', path: './samples/Attention_Is_All_You_Need.pdf' },
+        { name: 'Retrieval_Augmented_Generation_Lewis2020.pdf', path: './samples/Retrieval_Augmented_Generation_Lewis2020.pdf' },
+        { name: 'FlashAttention_Fast_Exact_Attention.pdf', path: './samples/FlashAttention_Fast_Exact_Attention.pdf' },
+        { name: 'DeepSeek_R1_Reasoning_via_RL.pdf', path: './samples/DeepSeek_R1_Reasoning_via_RL.pdf' },
+        { name: 'LoRA_Low_Rank_Adaptation.pdf', path: './samples/LoRA_Low_Rank_Adaptation.pdf' },
+      ];
+
+      let loadedAny = false;
+      for (const sample of sampleFiles) {
+        try {
+          const res = await fetch(sample.path);
+          if (res.ok) {
+            const blob = await res.blob();
+            const file = new File([blob], sample.name, { type: 'application/pdf' });
+            const doc = await parseUploadedFile(file);
+            await addDocument(doc);
+            loadedAny = true;
+          }
+        } catch {
+          // Ignore individual fetch failure
+        }
+      }
+
+      if (!loadedAny) {
+        // Fallback sample text paper if fetch not available
+        const sampleText = `# Contextual Retrieval & Advanced RAG: Architectural Paradigms for Zero-Hallucination QA
 Authors: AI Systems Research Group (2025)
 
 ## Abstract
-Traditional Retrieval-Augmented Generation (RAG) relies on fixed-length semantic chunking followed by cosine similarity search. While computationally efficient, this naive approach suffers from severe context amnesia, where isolated chunks lack document-level semantics, leading to retrieval failure rates exceeding 45%. In this study, we propose and benchmark a unified hybrid architecture combining: (1) Contextual Chunk Enrichment, (2) Parent-Child Hierarchical Retrieval, (3) Reciprocal Rank Fusion (RRF) between Dense Embeddings and Sparse BM25, and (4) Cross-Encoder Reranking.
+Traditional Retrieval-Augmented Generation (RAG) relies on fixed-length semantic chunking followed by cosine similarity search. In this study, we propose and benchmark a unified hybrid architecture combining: (1) Contextual Chunk Enrichment, (2) Parent-Child Hierarchical Retrieval, (3) Reciprocal Rank Fusion (RRF) between Dense Embeddings and Sparse BM25, and (4) Cross-Encoder Reranking.
 
 --- Page 2 ---
 ## 1. The Context Fragmentation Crisis in Naive RAG
-When a document is split into 250-word chunks, sentences such as "In Q3, net revenue climbed by 14.8% due to sustained hardware demand" completely lose the identity of the company and fiscal year. If an analyst queries "What was Tesla's Q3 revenue growth?", pure dense embeddings fail because the word "Tesla" is absent from the target chunk.
-
-### Table 1: Retrieval Failure Rates across 10,000 Complex Queries
-| Architecture Type | Keyword Recall | Semantic Precision | Failure Rate (%) |
-| :--- | :--- | :--- | :--- |
-| Naive Dense (Top-5) | 52.4% | 68.1% | 46.2% |
-| Sparse BM25 Only | 81.3% | 44.7% | 38.9% |
-| Hybrid (BM25 + Dense) | 88.9% | 79.4% | 19.5% |
-| Hybrid + Contextual Retrieval + Reranker | 97.2% | 94.6% | 4.8% |
+When a document is split into 250-word chunks, sentences lose the identity of the company and fiscal year. Hybrid search with contextual retrieval reduces failure rate to 4.8%.
 
 --- Page 3 ---
 ## 2. Mathematical Formulation of Reciprocal Rank Fusion (RRF)
-To unify dense vector rankings and BM25 lexical rankings without encountering uncalibrated score distributions, we compute:
-RRF_Score(d) = \\sum_{m \\in M} \\frac{1}{k + r_m(d)}
-where M is the set of retrieval models (Dense, BM25), r_m(d) is the ordinal rank of passage d, and k is a smoothing constant set empirically to k = 60.
+RRF_Score(d) = \\sum_{m \\in M} \\frac{1}{k + r_m(d)} where k = 60.
 
 --- Page 4 ---
 ## 3. Parent-Child Hierarchical Retrieval
-To resolve the trade-off between retrieval specificity and generation context, the system indexes granular child chunks (150-200 tokens) for matching, but dynamically expands to the enclosing parent paragraph (600-800 tokens) prior to context window injection.`;
+Indexes granular child chunks (150-200 tokens) for matching, and dynamically expands to parent paragraphs (600-800 tokens).`;
 
-      const sampleBlob = new Blob([sampleText], { type: 'text/markdown' });
-      const sampleFile = new File([sampleBlob], 'Contextual_RAG_Paper_2025.md', { type: 'text/markdown' });
-      const doc = await parseUploadedFile(sampleFile);
-      await addDocument(doc);
-      setActiveDocId(doc.id);
-      setPdfViewerOpen(true);
+        const sampleBlob = new Blob([sampleText], { type: 'text/markdown' });
+        const sampleFile = new File([sampleBlob], 'Contextual_RAG_Paper_2025.md', { type: 'text/markdown' });
+        const doc = await parseUploadedFile(sampleFile);
+        await addDocument(doc);
+      }
     } catch (err: any) {
-      setProcessError('Failed to load sample: ' + err.message);
+      setProcessError('Failed to load sample papers: ' + (err?.message || 'Unknown error'));
     } finally {
       setIsProcessing(false);
     }

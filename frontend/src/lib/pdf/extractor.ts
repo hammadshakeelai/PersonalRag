@@ -1,10 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { DocumentItem, DocumentType, PageData } from '../rag/types';
 import { createChunksFromDocument } from '../rag/chunker';
 
 // Ensure PDF.js worker is properly configured for Vite and GitHub Pages
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 }
 
 export async function parseUploadedFile(file: File): Promise<DocumentItem> {

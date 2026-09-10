@@ -14,11 +14,12 @@ import {
   Quote,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useRagStore } from '../../store/useRagStore';
 
-// Ensure PDF.js worker is properly configured
+// Ensure PDF.js worker is properly configured locally via Vite asset pipeline
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 }
 
 export const PdfViewer: React.FC = () => {
@@ -93,10 +94,14 @@ export const PdfViewer: React.FC = () => {
         // 1. Load PDF Document if not already cached
         if (!pdfDocRef.current) {
           let loadingTask;
-          if (activeDoc.pdfData) {
-            loadingTask = pdfjsLib.getDocument({ data: activeDoc.pdfData });
+          if (activeDoc.pdfBlobUrl) {
+            loadingTask = pdfjsLib.getDocument({ url: activeDoc.pdfBlobUrl });
+          } else if (activeDoc.pdfData) {
+            // Clone slice to prevent postMessage detach errors
+            loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(activeDoc.pdfData.slice(0)) });
           } else {
-            loadingTask = pdfjsLib.getDocument({ url: activeDoc.pdfBlobUrl! });
+            setViewMode('text');
+            return;
           }
           pdfDocRef.current = await loadingTask.promise;
         }
