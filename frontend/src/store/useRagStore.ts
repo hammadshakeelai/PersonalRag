@@ -64,7 +64,22 @@ function loadStoredBYOK(): BYOKConfig {
   try {
     const saved = localStorage.getItem(STORAGE_KEY_BYOK);
     if (saved) {
-      return { ...DEFAULT_BYOK, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      const provider = parsed.provider || 'gemini';
+      const providerKeys = parsed.providerKeys || {};
+      const providerModels = parsed.providerModels || {};
+      const apiKey = parsed.apiKey || providerKeys[provider] || '';
+      const model = parsed.model || providerModels[provider] || 'gemini-2.0-flash';
+
+      return {
+        ...DEFAULT_BYOK,
+        ...parsed,
+        provider,
+        apiKey,
+        model,
+        providerKeys: { ...providerKeys, [provider]: apiKey },
+        providerModels: { ...providerModels, [provider]: model },
+      };
     }
   } catch {}
   return DEFAULT_BYOK;

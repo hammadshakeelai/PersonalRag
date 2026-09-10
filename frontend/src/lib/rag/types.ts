@@ -64,6 +64,8 @@ export interface BYOKConfig {
   useReranker: boolean;
   useBM25: boolean;
   useHybridSearch: boolean;
+  providerKeys?: Record<string, string>;
+  providerModels?: Record<string, string>;
 }
 
 export interface PodcastLine {

@@ -71,11 +71,11 @@ async function streamGemini(
   history: { role: 'user' | 'assistant'; content: string }[],
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const modelName = config.model || 'gemini-2.0-flash';
-  const apiKey = config.apiKey;
+  const cleanModel = (config.model || 'gemini-2.0-flash').trim().replace(/^models\//, '');
+  const apiKey = (config.apiKey || '').trim();
 
   if (!apiKey) {
-    throw new Error('Please enter your Google Gemini API Key in the settings (top right).');
+    throw new Error('Please enter your Google Gemini API Key in Settings (top right).');
   }
 
   const contents = [
@@ -89,11 +89,14 @@ async function streamGemini(
     },
   ];
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
       contents,
       systemInstruction: {
@@ -106,12 +109,46 @@ async function streamGemini(
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API Error (${response.status}): ${errText}`);
+    let errorDetail = '';
+    try {
+      const errJson = await response.json();
+      errorDetail = errJson.error?.message || JSON.stringify(errJson);
+    } catch {
+      errorDetail = await response.text();
+    }
+
+    // If systemInstruction caused a 400 on certain models, retry prepending system prompt to user turn
+    if (response.status === 400 && errorDetail.toLowerCase().includes('system_instruction')) {
+      const fallbackContents = [
+        ...history.slice(-4).map((h) => ({
+          role: h.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: h.content }],
+        })),
+        {
+          role: 'user',
+          parts: [{ text: `${systemPrompt}\n\nUser Question: ${query}` }],
+        },
+      ];
+
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: fallbackContents,
+          generationConfig: { temperature: config.temperature ?? 0.3 },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API Error (${response.status}): ${errorDetail}`);
+      }
+    } else {
+      throw new Error(`Gemini API Error (${response.status}): ${errorDetail}`);
+    }
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('Response body stream is unavailable.');
+  if (!reader) throw new Error('Response stream is unavailable.');
 
   const decoder = new TextDecoder();
   let fullText = '';
@@ -137,8 +174,37 @@ async function streamGemini(
             callbacks.onChunk(chunk);
           }
         } catch {
-          // ignore partial JSON parse errors
+          // ignore partial JSON parse error
         }
+      }
+    }
+  }
+
+  // Non-streaming fallback if stream returned empty
+  if (!fullText.trim()) {
+    const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const fbRes = await fetch(fallbackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [
+          ...history.slice(-4).map((h) => ({
+            role: h.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: h.content }],
+          })),
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\nUser Question: ${query}` }],
+          },
+        ],
+      }),
+    });
+
+    if (fbRes.ok) {
+      const fbData = await fbRes.json();
+      fullText = fbData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (fullText) {
+        callbacks.onChunk(fullText);
       }
     }
   }
@@ -163,8 +229,8 @@ async function streamOpenAICompatible(
     baseUrl = (config.customBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
   }
 
-  const model = config.model || defaultModel;
-  const apiKey = config.apiKey;
+  const model = (config.model || defaultModel).trim();
+  const apiKey = (config.apiKey || '').trim();
 
   if (!apiKey && config.provider !== 'custom') {
     throw new Error(`Please enter your ${config.provider.toUpperCase()} API Key in settings.`);
@@ -195,12 +261,18 @@ async function streamOpenAICompatible(
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`${config.provider.toUpperCase()} Error (${response.status}): ${errText}`);
+    let errorDetail = '';
+    try {
+      const errJson = await response.json();
+      errorDetail = errJson.error?.message || JSON.stringify(errJson);
+    } catch {
+      errorDetail = await response.text();
+    }
+    throw new Error(`${config.provider.toUpperCase()} Error (${response.status}): ${errorDetail}`);
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('Response body stream is unavailable.');
+  if (!reader) throw new Error('Response stream is unavailable.');
 
   const decoder = new TextDecoder();
   let fullText = '';
@@ -242,11 +314,12 @@ async function streamAnthropic(
   history: { role: 'user' | 'assistant'; content: string }[],
   callbacks: StreamCallbacks
 ): Promise<void> {
-  const apiKey = config.apiKey;
+  const apiKey = (config.apiKey || '').trim();
   if (!apiKey) {
     throw new Error('Please enter your Anthropic API Key in settings.');
   }
 
+  const model = (config.model || 'claude-3-5-sonnet-20241022').trim();
   const messages = [
     ...history.slice(-4),
     { role: 'user', content: query },
@@ -261,7 +334,7 @@ async function streamAnthropic(
       'dangerously-allow-browser': 'true',
     },
     body: JSON.stringify({
-      model: config.model || 'claude-3-5-sonnet-20241022',
+      model,
       max_tokens: 2048,
       system: systemPrompt,
       messages,
@@ -270,8 +343,14 @@ async function streamAnthropic(
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Anthropic Error (${response.status}): ${errText}`);
+    let errorDetail = '';
+    try {
+      const errJson = await response.json();
+      errorDetail = errJson.error?.message || JSON.stringify(errJson);
+    } catch {
+      errorDetail = await response.text();
+    }
+    throw new Error(`Anthropic Error (${response.status}): ${errorDetail}`);
   }
 
   const reader = response.body?.getReader();
