@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   UploadCloud,
   FileText,
@@ -11,6 +11,9 @@ import {
   FileSpreadsheet,
   AlertCircle,
   Loader2,
+  Search,
+  CheckCircle,
+  Layers,
 } from 'lucide-react';
 import { useRagStore } from '../../store/useRagStore';
 import { parseUploadedFile } from '../../lib/pdf/extractor';
@@ -25,15 +28,28 @@ export const SourceManager: React.FC = () => {
     selectAllDocuments,
     activeDocId,
     setActiveDocId,
+    isSidebarOpen,
   } = useRagStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedCount = documents.filter((d) => d.selected).length;
   const totalChunks = documents.reduce((acc, d) => acc + d.chunks.length, 0);
+
+  const filteredDocs = useMemo(() => {
+    if (!searchQuery.trim()) return documents;
+    return documents.filter((d) =>
+      d.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [documents, searchQuery]);
+
+  if (!isSidebarOpen) {
+    return null;
+  }
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -60,7 +76,6 @@ export const SourceManager: React.FC = () => {
     setProcessError(null);
 
     try {
-      // Create rich sample research paper on Contextual Retrieval & Next-Gen RAG
       const sampleText = `# Contextual Retrieval & Advanced RAG: Architectural Paradigms for Zero-Hallucination QA
 Authors: AI Systems Research Group (2025)
 
@@ -123,16 +138,17 @@ To resolve the trade-off between retrieval specificity and generation context, t
   };
 
   return (
-    <aside className="w-72 sm:w-80 h-full border-r border-slate-800 bg-slate-950 flex flex-col shrink-0 select-none">
+    <aside className="w-72 sm:w-80 h-full border-r border-slate-800/80 bg-slate-950/95 flex flex-col shrink-0 select-none transition-all">
       {/* Header */}
-      <div className="p-3.5 border-b border-slate-800/80 flex items-center justify-between">
+      <div className="p-3.5 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
         <div className="flex items-center space-x-2">
           <BookOpen className="w-4 h-4 text-indigo-400" />
-          <h2 className="text-sm font-semibold text-slate-200">Sources Notebook</h2>
+          <h2 className="text-xs sm:text-sm font-semibold text-slate-200">Sources Notebook</h2>
         </div>
-        <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full font-mono">
-          {documents.length} docs ({totalChunks} chunks)
-        </span>
+        <div className="flex items-center space-x-1 text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full font-mono">
+          <Layers className="w-3 h-3 text-indigo-400" />
+          <span>{totalChunks} Chunks</span>
+        </div>
       </div>
 
       {/* Upload Dropzone */}
@@ -149,10 +165,10 @@ To resolve the trade-off between retrieval specificity and generation context, t
             handleFiles(e.dataTransfer.files);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+          className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all ${
             isDragging
               ? 'border-indigo-500 bg-indigo-500/10 scale-[0.99]'
-              : 'border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900/80'
+              : 'border-slate-800 hover:border-slate-700 bg-slate-900/30 hover:bg-slate-900/60'
           }`}
         >
           <input
@@ -166,27 +182,27 @@ To resolve the trade-off between retrieval specificity and generation context, t
 
           {isProcessing ? (
             <div className="flex flex-col items-center justify-center py-2 space-y-2">
-              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
               <span className="text-xs text-slate-300 font-medium">Extracting & indexing chunks...</span>
             </div>
           ) : (
-            <div className="flex flex-col items-center space-y-1.5">
-              <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300">
+            <div className="flex flex-col items-center space-y-1">
+              <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                 <UploadCloud className="w-4 h-4" />
               </div>
               <p className="text-xs font-medium text-slate-200">
-                Drop documents here or <span className="text-indigo-400 underline">browse</span>
+                Drop files here or <span className="text-indigo-400 underline">browse</span>
               </p>
               <p className="text-[10px] text-slate-500">PDF, Markdown, TXT, CSV, Code</p>
             </div>
           )}
         </div>
 
-        {/* Instant Demo Button */}
+        {/* 1-Click Demo Sample Button */}
         {documents.length === 0 && !isProcessing && (
           <button
             onClick={handleLoadSample}
-            className="w-full mt-2 text-xs flex items-center justify-center space-x-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 py-1.5 rounded-lg transition-colors font-medium"
+            className="w-full mt-2 text-xs flex items-center justify-center space-x-1.5 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 text-indigo-300 border border-indigo-500/25 py-2 rounded-xl transition-all font-medium shadow-sm"
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
             <span>Load Sample Research Paper</span>
@@ -201,24 +217,39 @@ To resolve the trade-off between retrieval specificity and generation context, t
         )}
       </div>
 
-      {/* Source Selection & Controls */}
-      {documents.length > 0 && (
-        <div className="px-3 py-1.5 flex items-center justify-between border-y border-slate-800/60 bg-slate-900/30 text-xs text-slate-400">
-          <div className="flex items-center space-x-1.5">
-            <button
-              onClick={() => selectAllDocuments(selectedCount < documents.length)}
-              className="flex items-center space-x-1 hover:text-slate-200"
-            >
-              {selectedCount === documents.length ? (
-                <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
-              ) : (
-                <Square className="w-3.5 h-3.5" />
-              )}
-              <span>Select All</span>
-            </button>
+      {/* Search within sources (if multiple docs) */}
+      {documents.length > 2 && (
+        <div className="px-3 pb-2">
+          <div className="relative flex items-center">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Filter sources..."
+              className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500/60 rounded-lg pl-8 pr-2 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
+            />
           </div>
-          <span className="text-[11px] text-indigo-400 font-medium">
-            {selectedCount} of {documents.length} active
+        </div>
+      )}
+
+      {/* Source Selection Controls */}
+      {documents.length > 0 && (
+        <div className="px-3 py-1.5 flex items-center justify-between border-y border-slate-800/80 bg-slate-900/30 text-xs text-slate-400">
+          <button
+            onClick={() => selectAllDocuments(selectedCount < documents.length)}
+            className="flex items-center space-x-1.5 hover:text-slate-200 transition-colors"
+          >
+            {selectedCount === documents.length ? (
+              <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+            ) : (
+              <Square className="w-3.5 h-3.5" />
+            )}
+            <span>Select All</span>
+          </button>
+          <span className="text-[11px] text-indigo-400 font-medium flex items-center space-x-1">
+            <CheckCircle className="w-3 h-3" />
+            <span>{selectedCount} of {documents.length} active</span>
           </span>
         </div>
       )}
@@ -227,22 +258,22 @@ To resolve the trade-off between retrieval specificity and generation context, t
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
         {documents.length === 0 && !isProcessing && (
           <div className="text-center py-10 px-4 text-slate-500">
-            <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="text-xs">No documents uploaded yet.</p>
-            <p className="text-[11px] text-slate-600 mt-1">Upload a PDF or click the sample button above.</p>
+            <FileText className="w-8 h-8 mx-auto mb-2 opacity-25 text-slate-400" />
+            <p className="text-xs font-medium text-slate-400">No documents added yet</p>
+            <p className="text-[11px] text-slate-600 mt-1">Upload a PDF or click the demo button above.</p>
           </div>
         )}
 
-        {documents.map((doc) => {
+        {filteredDocs.map((doc) => {
           const isActive = activeDocId === doc.id;
           return (
             <div
               key={doc.id}
               onClick={() => setActiveDocId(doc.id)}
-              className={`group flex items-start justify-between p-2.5 rounded-lg border transition-all cursor-pointer ${
+              className={`group flex items-start justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-indigo-950/40 border-indigo-500/40 shadow-sm'
-                  : 'bg-slate-900/40 hover:bg-slate-900 border-slate-800/70 hover:border-slate-700'
+                  ? 'bg-indigo-950/40 border-indigo-500/40 shadow-sm shadow-indigo-950/50'
+                  : 'bg-slate-900/30 hover:bg-slate-900 border-slate-800/70 hover:border-slate-700'
               }`}
             >
               <div className="flex items-start space-x-2.5 min-w-0 flex-1">
@@ -270,7 +301,7 @@ To resolve the trade-off between retrieval specificity and generation context, t
                       {doc.name}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2 mt-1 text-[10px] text-slate-500">
+                  <div className="flex items-center space-x-2 mt-1 text-[10px] text-slate-500 font-mono">
                     <span>{doc.totalPages} {doc.totalPages === 1 ? 'page' : 'pages'}</span>
                     <span>•</span>
                     <span>{doc.chunks.length} chunks</span>

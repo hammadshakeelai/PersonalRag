@@ -32,6 +32,7 @@ interface RagState {
   isStudioOpen: boolean;
   isSettingsOpen: boolean;
   isPdfViewerOpen: boolean;
+  isSidebarOpen: boolean;
   backendUrl: string;
   backendConnected: boolean;
 
@@ -51,6 +52,8 @@ interface RagState {
   setStudioOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setPdfViewerOpen: (open: boolean) => void;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar: () => void;
   setBackendConnected: (connected: boolean) => void;
   setBackendUrl: (url: string) => void;
 }
@@ -92,6 +95,7 @@ Your personal, privacy-first document intelligence platform combining the exact-
   isStudioOpen: false,
   isSettingsOpen: false,
   isPdfViewerOpen: false,
+  isSidebarOpen: true,
   backendUrl: 'http://localhost:8000',
   backendConnected: false,
 
@@ -193,6 +197,8 @@ Your personal, privacy-first document intelligence platform combining the exact-
   setStudioOpen: (open) => set({ isStudioOpen: open }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setPdfViewerOpen: (open) => set({ isPdfViewerOpen: open }),
+  setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+  toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   setBackendConnected: (connected) => set({ backendConnected: connected }),
   setBackendUrl: (url) => set({ backendUrl: url }),
 }));
