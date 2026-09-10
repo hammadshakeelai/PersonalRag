@@ -17,6 +17,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { marked } from 'marked';
+import { sanitizeHtml } from '../../lib/security/sanitize';
 import { useRagStore, globalBM25, globalVector } from '../../store/useRagStore';
 import { streamRAGResponse } from '../../lib/llm/client';
 import { reciprocalRankFusion } from '../../lib/rag/rrf';
@@ -30,9 +31,11 @@ export const ChatPanel: React.FC = () => {
     isStreaming,
     byokConfig,
     backendUrl,
+    backendConnected,
     addChatMessage,
     updateLastChatMessage,
     clearChat,
+    setActiveDocId,
     setActiveCitation,
     setPdfViewerOpen,
     setSettingsOpen,
@@ -126,16 +129,42 @@ export const ChatPanel: React.FC = () => {
       // 3. Reranker
       let finalChunks = combined;
       if (byokConfig.useReranker) {
-        finalChunks = await rerankChunks(q, combined, byokConfig.topK, backendUrl);
+        finalChunks = await rerankChunks(q, combined, byokConfig.topK, backendConnected ? backendUrl : undefined);
       } else {
         finalChunks = combined.slice(0, byokConfig.topK);
       }
 
       const retrievedChunks = finalChunks.map((f) => f.chunk);
 
-      // 4. Stream LLM Response
+      // 4. Stream LLM Response or Fallback Preview
       let accumulatedContent = '';
       let assignedCitations: Citation[] = [];
+
+      const hasKey = byokConfig.apiKey?.trim() || byokConfig.provider === 'custom';
+      if (!hasKey) {
+        // High-Quality Client-Side In-Browser Hybrid Preview
+        const previewCitations: Citation[] = retrievedChunks.slice(0, 4).map((c, i) => ({
+          id: `cite_${i + 1}`,
+          docId: c.docId,
+          docName: c.docName,
+          pageNumber: c.pageNumber,
+          quote: c.content.slice(0, 160) + '...',
+          relevanceScore: 0.95 - i * 0.05,
+        }));
+
+        const previewResponse = `### 💡 In-Browser Hybrid Search Preview (Zero API Key)
+*(To enable live multi-document LLM generation, add your free Google Gemini or Groq key in **Settings** ⚙️)*
+
+We executed in-browser hybrid search (BM25 lexical + dense cosine fusion) across **${activeDocs.length} active documents** and retrieved the highest-ranking passages for your query:
+
+${retrievedChunks.slice(0, 3).map((c, i) => `#### Evidence Passage ${i + 1} [${c.docName}, p. ${c.pageNumber}]
+> "${c.content.slice(0, 240)}..."`).join('\n\n')}
+
+👉 **Tip:** Click any citation badge above or in the cards below to jump straight to the exact highlighted sentence on the visual PDF canvas!`;
+
+        updateLastChatMessage(previewResponse, false, previewCitations);
+        return;
+      }
 
       await streamRAGResponse(
         q,
@@ -176,16 +205,43 @@ export const ChatPanel: React.FC = () => {
     setPdfViewerOpen(true);
   };
 
+  const handleMessageClick = (e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest('[data-cite-page]');
+    if (target) {
+      e.stopPropagation();
+      const docName = target.getAttribute('data-cite-doc');
+      const pageStr = target.getAttribute('data-cite-page');
+      const pageNum = pageStr ? parseInt(pageStr, 10) : 1;
+
+      const doc = documents.find(
+        (d) =>
+          d.name.toLowerCase().includes((docName || '').toLowerCase()) ||
+          (docName || '').toLowerCase().includes(d.name.toLowerCase())
+      ) || documents[0];
+
+      if (doc) {
+        setActiveDocId(doc.id);
+        setActiveCitation({
+          docId: doc.id,
+          pageNumber: pageNum,
+          quote: `Citation reference from ${doc.name}`,
+        });
+        setPdfViewerOpen(true);
+      }
+    }
+  };
+
   const renderMarkdown = (content: string) => {
     try {
-      // Style citation mentions like [Doc 1, p. 14] into clickable badges
+      // Style citation mentions like [Doc 1, p. 14] into clickable badges with data attributes
       const styledContent = content.replace(
-        /\[([^\]]+,\s*p\.\s*\d+)\]/g,
-        '<span class="inline-flex items-center space-x-1 text-sky-400 bg-sky-950/80 border border-sky-800/80 px-1.5 py-0.2 rounded text-[11px] font-mono cursor-pointer hover:bg-sky-900/80 transition-colors">[$1]</span>'
+        /\[([^\]]+),\s*p\.\s*(\d+)\]/g,
+        '<span role="button" tabindex="0" data-cite-doc="$1" data-cite-page="$2" class="citation-badge inline-flex items-center space-x-1 text-sky-400 bg-sky-950/80 border border-sky-800/80 px-1.5 py-0.2 rounded text-[11px] font-mono cursor-pointer hover:bg-sky-900/80 transition-colors">[$1, p.$2]</span>'
       );
-      return { __html: marked.parse(styledContent) as string };
+      const parsed = marked.parse(styledContent) as string;
+      return { __html: sanitizeHtml(parsed) };
     } catch {
-      return { __html: content };
+      return { __html: sanitizeHtml(content) };
     }
   };
 
@@ -291,8 +347,9 @@ export const ChatPanel: React.FC = () => {
                   </div>
                 )}
 
-                {/* Message Markdown Body */}
+                {/* Message Markdown Body with Event-Delegated Citations */}
                 <div
+                  onClick={handleMessageClick}
                   className="prose-custom break-words leading-relaxed"
                   dangerouslySetInnerHTML={renderMarkdown(msg.content)}
                 />
@@ -315,7 +372,10 @@ export const ChatPanel: React.FC = () => {
                         <button
                           key={c.id || i}
                           onClick={() => handleCitationClick(c)}
-                          className="flex items-start space-x-2 text-left p-2 rounded-xl bg-slate-900/60 hover:bg-indigo-950/40 border border-slate-800/80 hover:border-indigo-500/40 transition-all group/cite"
+                          data-cite-page={c.pageNumber}
+                          data-cite-doc={c.docName}
+                          title={`Citation: ${c.docName} p.${c.pageNumber}`}
+                          className="citation-badge flex items-start space-x-2 text-left p-2 rounded-xl bg-slate-900/60 hover:bg-indigo-950/40 border border-slate-800/80 hover:border-indigo-500/40 transition-all group/cite"
                         >
                           <div className="w-5 h-5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                             {i + 1}

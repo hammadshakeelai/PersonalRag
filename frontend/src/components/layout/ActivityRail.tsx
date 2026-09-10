@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   Plus,
   Files,
@@ -19,7 +19,7 @@ export const ActivityRail: React.FC = () => {
         <button
           onClick={clearChat}
           className="w-11 h-11 rounded-2xl bg-gradient-to-b from-indigo-500/20 to-indigo-600/30 hover:from-indigo-500/30 hover:to-indigo-600/50 border border-indigo-500/40 text-indigo-200 hover:text-white flex flex-col items-center justify-center transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)] hover:shadow-[0_0_20px_rgba(99,102,241,0.35)] group"
-          title="Start a new chat session"
+          title="New Chat - Start a new chat session"
         >
           <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
         </button>

@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type { ActiveCitation, BYOKConfig, ChatMessage, DocumentItem, StudioArtifact } from '../lib/rag/types';
 import { BM25Index } from '../lib/rag/bm25';
 import { VectorIndex } from '../lib/rag/vector';
@@ -107,13 +107,24 @@ function loadStoredDocs(): DocumentItem[] {
 function persistChat(messages: ChatMessage[]) {
   try {
     localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(messages));
-  } catch {}
+  } catch {
+    try {
+      // Auto-prune oldest messages to guarantee persistence within quota
+      const pruned = [messages[0], ...messages.slice(-10)];
+      localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(pruned));
+    } catch {}
+  }
 }
 
 function persistStudio(artifacts: StudioArtifact[]) {
   try {
     localStorage.setItem(STORAGE_KEY_STUDIO, JSON.stringify(artifacts));
-  } catch {}
+  } catch {
+    try {
+      // Keep only most recent 5 artifacts if quota exceeded
+      localStorage.setItem(STORAGE_KEY_STUDIO, JSON.stringify(artifacts.slice(-5)));
+    } catch {}
+  }
 }
 
 function persistDocs(documents: DocumentItem[]) {
@@ -128,13 +139,34 @@ function persistDocs(documents: DocumentItem[]) {
       uploadedAt: d.uploadedAt,
       summary: d.summary,
       selected: d.selected,
-      pages: d.pages,
-      rawText: d.rawText,
-      chunks: d.chunks,
+      pages: d.pages.map((p) => ({
+        pageNumber: p.pageNumber,
+        text: p.text.slice(0, 1500),
+        markdown: (p.markdown || p.text || '').slice(0, 1500),
+      })),
+      rawText: d.rawText.slice(0, 8000),
+      chunks: d.chunks.slice(0, 50),
     }));
     localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(sanitized));
   } catch (err) {
-    console.warn('Document localStorage persist error (quota exceeded):', err);
+    console.warn('Document localStorage persist warning (trimming to fit quota):', err);
+    try {
+      // Ultra-lightweight fallback: persist document metadata and key chunks
+      const minimal = documents.map((d) => ({
+        id: d.id,
+        name: d.name,
+        type: d.type,
+        totalPages: d.totalPages,
+        size: d.size,
+        uploadedAt: d.uploadedAt,
+        summary: d.summary,
+        selected: d.selected,
+        pages: [],
+        rawText: '',
+        chunks: d.chunks.slice(0, 10),
+      }));
+      localStorage.setItem(STORAGE_KEY_DOCS, JSON.stringify(minimal));
+    } catch {}
   }
 }
 
