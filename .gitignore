@@ -38,3 +38,6 @@ yarn-error.log*
 # Local agent/session scratch
 .remember/
 .claude/
+
+# Vite local overrides
+*.local
