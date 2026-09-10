@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #0b0f19;
+    color: #e2e8f0;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.9);
+}
+
+/* Citation glow highlight */
+.citation-highlight {
+  background-color: rgba(234, 179, 8, 0.35);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.5);
+  border-bottom: 2px solid #eab308;
+  transition: all 0.3s ease;
+}
+
+/* Markdown styling inside chat messages */
+.prose-custom p {
+  margin-bottom: 0.75rem;
+  line-height: 1.65;
+}
+
+.prose-custom p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-custom ul, .prose-custom ol {
+  margin-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-custom li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-custom code {
+  background: rgba(30, 41, 59, 0.8);
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.prose-custom pre code {
+  display: block;
+  padding: 0.75rem 1rem;
+  background: #0f172a;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.prose-custom blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 0.75rem;
+  font-style: italic;
+  color: #94a3b8;
+  margin: 0.75rem 0;
+}
+
+.prose-custom table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.prose-custom th, .prose-custom td {
+  border: 1px solid #334155;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.prose-custom th {
+  background: #1e293b;
+  font-weight: 600;
+}
